@@ -24,11 +24,30 @@ const lister = new DeviceLister({
 });
 
 let kitList = {};
+const FEEDBACK = "F000FEEA68656172746973656E7365AE";
+const DEVICE = "180A";
+const BATTERY = "180F";
+const STORAGE = "F000111068656172746973656E7365AE";
+const ALERT = "1802";
 
 class KitInfo {
   constructor(name) {
     this.name = name;
     this.connect = false;
+    this.servicesId = {
+      feedback: null,
+      device: null,
+      battery: null,
+      storage: null,
+      alert: null,
+    };
+    this.services = {
+      feedback: null,
+      device: null,
+      battery: null,
+      storage: null,
+      alert: null,
+    };
   }
 }
 
@@ -77,12 +96,75 @@ class PortManager {
     });
   }
 
+  StartSession() {
+    Object.keys(kitList).forEach((addr) => {
+      if (kitList[addr].servicesId.feedback) {
+        console.log(kitList[addr].servicesId.feedback);
+        this.adapters[0].startCharacteristicsNotifications(kitList[addr].servicesId.feedback, false);
+      }
+    });
+  }
+
+  GetDescriptor(address, characteristicId) {
+    this.adapters[0].getDescriptors(characteristicId, (err, descripter) => {
+      console.log(descripter);
+      const descripterId = descripter[0].instanceId;
+      //const descriptor =this.adapters[0].GetDescriptor(descripterId)
+      //kitList[address].servicesId.feedback = descripterId;
+      console.log(kitList[address]);
+    });
+  }
+
+  GetChracteristic(address, serviceId) {
+    this.adapters[0].getCharacteristics(serviceId, (err, characteristic) => {
+      // process.stdout.write("\u001b[2J\u001b[0;0H");
+      if (characteristic) {
+        console.log(characteristic);
+        const [id] = characteristic.filter((curr) => curr.declarationHandle === 13);
+        kitList[address].servicesId.feedback = id.instanceId;
+        //this.GetDescriptor(addresss, id.instanceId);
+      }
+    });
+  }
+
+  GetService(address, instanceID) {
+    this.adapters[0].getServices(instanceID, (err, service) => {
+      if (!err) {
+        for (let i = 0; i < service.length; i++) {
+          switch (service[i].uuid) {
+            case FEEDBACK:
+              kitList[address].services.feedback = service[i];
+              const { instanceId: serviceId } = service[i];
+              console.log(service[i]);
+              //console.log(serviceId);
+              this.GetChracteristic(address, serviceId);
+              break;
+            case DEVICE:
+              kitList[address].services.device = service[i];
+              break;
+            case BATTERY:
+              kitList[address].services.battery = service[i];
+              break;
+            case STORAGE:
+              kitList[address].services.storage = service[i];
+              break;
+            case ALERT:
+              kitList[address].services.alert = service[i];
+              break;
+          }
+        }
+      }
+    });
+  }
+
   StartConnect() {
     const scanParameters = {
-      active: false,
+      active: true,
       interval: 100,
       window: 50,
       timeout: 0,
+      use_whitelist: 1,
+      adv_dir_report: 1,
     };
     const connParams = {
       min_conn_interval: 7.5,
@@ -96,11 +178,12 @@ class PortManager {
     };
 
     const disconnectList = Object.keys(kitList).filter((curr) => kitList[curr].connect === false);
-    //console.log(disconnectList);
 
-    this.adapters[0].connect(disconnectList[0], params, () => {
-      this.StartConnect();
-    });
+    if (disconnectList[0]) {
+      this.adapters[0].connect(disconnectList[0], params, () => {
+        this.StartConnect();
+      });
+    }
     //this.adapters.forEach((adapter) => {
     //  Object.keys(kitList)
     //    .slice(0, 2)
@@ -142,10 +225,11 @@ function addAdapterListener(adapter) {
     console.log(`Device ${device.address}/${device.addressType} connected.`);
     kitList[device.address].connect = true;
     io.emit("discovered", kitList);
-    process.stdout.write("\u001b[2J\u001b[0;0H");
-    console.log(device);
-    const connectSuccess = Object.values(kitList).filter((kit) => kit.connect === true);
-    console.log(connectSuccess);
+    //process.stdout.write("\u001b[2J\u001b[0;0H");
+    const { instanceId, address } = device;
+    //console.log(instanceId);
+    Object.values(kitList).filter((kit) => kit.connect === true);
+    portmanager.GetService(address, instanceId);
   });
 
   adapter.on("deviceDisconnected", (device) => {
@@ -160,10 +244,20 @@ function addAdapterListener(adapter) {
     if ("adData" in device) {
       const { adData } = device;
       if (adData && "BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME" in adData) {
-        const { _address } = device;
-        const { BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME: name } = adData;
-        if (!(_address in kitList)) {
-          kitList[_address] = new KitInfo(name);
+        const { address } = device;
+        //console.log(device);
+        let { BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME: name, BLE_GAP_AD_TYPE_SOLICITED_SERVICE_UUIDS_16BIT: serviceID } = adData;
+        //uuid가 fe(254)ea(234) 인 경우에만 리스트에 추가
+        if (serviceID && serviceID[0] === 234 && serviceID[1] === 254) {
+          serviceID = serviceID.reduce((acc, curr) => {
+            acc = curr.toString(16) + acc;
+            return acc;
+          }, "");
+
+          if (!(address in kitList)) {
+            kitList[address] = new KitInfo(name);
+          }
+        } else {
         }
         console.log("Kit Total Search : ", Object.keys(kitList).length);
         io.emit("discovered", kitList);
@@ -253,7 +347,7 @@ io.on("connection", (socket) => {
     console.log("come");
   });
   socket.on("session-start", () => {
-    console.log("come");
+    portmanager.StartSession();
   });
   socket.on("session-stop", () => {
     console.log("come");

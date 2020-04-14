@@ -42,6 +42,7 @@ function App() {
                 <div>
                   <h2>{curr}</h2>
                   <h3>{kitList[curr].name}</h3>
+
                   <p>connect : {kitList[curr].connect ? "connect" : "disconnect"}</p>
                 </div>
               </li>
