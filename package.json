@@ -1,0 +1,43 @@
+{
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.5.0",
+    "@testing-library/react": "^10.0.2",
+    "@testing-library/user-event": "^10.0.1",
+    "express": "^4.17.1",
+    "nrf-device-lister": "^2.4.0",
+    "pc-ble-driver-js": "^2.6.2",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1",
+    "react-scripts": "^3.4.1",
+    "socket.io": "^2.3.0",
+    "socket.io-client": "^2.3.0"
+  },
+  "scripts": {
+    "start:client": "react-scripts start",
+    "start:server": "nodemon controller/index",
+    "start": "npm-run-all  --parallel start:**",
+    "build": "react-scripts build"
+  },
+  "name": "nordic-ble",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/mitoconcrete/nordic-ble.git",
+  "author": "thkim <xogns98@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^2.0.3",
+    "npm-run-all": "^4.1.5"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
