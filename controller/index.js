@@ -24,7 +24,8 @@ const lister = new DeviceLister({
 });
 
 let kitList = {};
-const FEEDBACK = "F000FEEA68656172746973656E7365AE";
+const FEEDBACK_SERVICE_UUID = "F000FEEA68656172746973656E7365AE";
+const SENSORDATA_STREAM_CHAR_UUID = "F000FEEB68656172746973656E7365AE";
 const DEVICE = "180A";
 const BATTERY = "180F";
 const STORAGE = "F000111068656172746973656E7365AE";
@@ -34,12 +35,15 @@ class KitInfo {
   constructor(name) {
     this.name = name;
     this.connect = false;
-    this.servicesId = {
-      feedback: null,
-      device: null,
-      battery: null,
-      storage: null,
-      alert: null,
+    this.depth = null;
+    this.breath = null;
+    this.descriptorId = {
+      SensorDataStream: null,
+      BMP280SensorStatus: null,
+    };
+    this.characteristicId = {
+      SensorDataStream: null,
+      BMP280SensorStatus: null,
     };
     this.services = {
       feedback: null,
@@ -98,32 +102,66 @@ class PortManager {
 
   StartSession() {
     Object.keys(kitList).forEach((addr) => {
-      if (kitList[addr].servicesId.feedback) {
-        console.log(kitList[addr].servicesId.feedback);
-        this.adapters[0].startCharacteristicsNotifications(kitList[addr].servicesId.feedback, false);
+      if (kitList[addr].descriptorId.SensorDataStream) {
+        console.log("portmanager.startsession");
+
+        //this.adapters[0].startCharacteristicsNotifications(kitList[addr].characteristicId.SensorDataStream, true, (err) => {
+        //  if (err) {
+        //    console.log("StartSession Error :", err);
+        //  } else {
+        //    console.log("😍ACK");
+
+        this.adapters[0].writeDescriptorValue(kitList[addr].descriptorId.SensorDataStream, [1, 0], true, (err, byte) => {
+          if (err) {
+            console.log(err);
+          } else {
+          }
+
+          //    });
+          //  }
+        });
       }
     });
   }
 
-  GetDescriptor(address, characteristicId) {
-    this.adapters[0].getDescriptors(characteristicId, (err, descripter) => {
-      console.log(descripter);
-      const descripterId = descripter[0].instanceId;
-      //const descriptor =this.adapters[0].GetDescriptor(descripterId)
-      //kitList[address].servicesId.feedback = descripterId;
-      console.log(kitList[address]);
+  StopSession() {
+    Object.keys(kitList).forEach((addr) => {
+      if (kitList[addr].descriptorId.SensorDataStream) {
+        console.log("portmanager.stopsession");
+
+        //this.adapters[0].startCharacteristicsNotifications(kitList[addr].characteristicId.SensorDataStream, true, (err) => {
+        //  if (err) {
+        //    console.log("StartSession Error :", err);
+        //  } else {
+        //    console.log("😍ACK");
+
+        this.adapters[0].writeDescriptorValue(kitList[addr].descriptorId.SensorDataStream, [0, 0], true, (err, byte) => {
+          if (err) {
+            console.log(err);
+          } else {
+          }
+
+          //    });
+          //  }
+        });
+      }
     });
   }
 
   GetChracteristic(address, serviceId) {
-    this.adapters[0].getCharacteristics(serviceId, (err, characteristic) => {
+    this.adapters[0].getCharacteristics(serviceId, (err, characteristics) => {
       // process.stdout.write("\u001b[2J\u001b[0;0H");
-      if (characteristic) {
-        console.log(characteristic);
-        const [id] = characteristic.filter((curr) => curr.declarationHandle === 13);
-        kitList[address].servicesId.feedback = id.instanceId;
-        //this.GetDescriptor(addresss, id.instanceId);
-      }
+
+      characteristics.forEach((characteristic) => {
+        if (characteristic.uuid === SENSORDATA_STREAM_CHAR_UUID) {
+          this.adapters[0].getDescriptors(characteristic.instanceId, (err, descriptors) => {
+            descriptors.forEach((descriptor) => {
+              kitList[address].descriptorId.SensorDataStream = descriptor.instanceId;
+            });
+          });
+          kitList[address].characteristicId.SensorDataStream = characteristic.instanceId;
+        }
+      });
     });
   }
 
@@ -132,12 +170,12 @@ class PortManager {
       if (!err) {
         for (let i = 0; i < service.length; i++) {
           switch (service[i].uuid) {
-            case FEEDBACK:
+            case FEEDBACK_SERVICE_UUID:
               kitList[address].services.feedback = service[i];
               const { instanceId: serviceId } = service[i];
-              console.log(service[i]);
-              //console.log(serviceId);
+
               this.GetChracteristic(address, serviceId);
+
               break;
             case DEVICE:
               kitList[address].services.device = service[i];
@@ -156,6 +194,9 @@ class PortManager {
       }
     });
   }
+  StopConnect() {
+    this.adapters[0].connReset((...args) => {});
+  }
 
   StartConnect() {
     const scanParameters = {
@@ -163,8 +204,6 @@ class PortManager {
       interval: 100,
       window: 50,
       timeout: 0,
-      use_whitelist: 1,
-      adv_dir_report: 1,
     };
     const connParams = {
       min_conn_interval: 7.5,
@@ -212,6 +251,8 @@ function addAdapterListener(adapter) {
    * Handling error and log message events from the adapter.
    */
   adapter.on("logMessage", (severity, message) => {
+    //console.log(severity);
+    //console.log(message);
     if (severity > 3) console.log(`${message}.`);
   });
   adapter.on("error", (error) => {
@@ -270,11 +311,23 @@ function addAdapterListener(adapter) {
     process.exit(1);
   });
 
-  adapter.on("characteristicValueChanged", (attribute) => {
-    if (attribute.uuid === BLE_UUID_HEART_RATE_MEASUREMENT_CHAR) {
-      console.log(`Received heart rate measurement: ${attribute.value}.`);
-    }
+  adapter.on("characteristicValueChanged", (data) => {
+    const { value } = data;
+    const [targetKitAddr] = data.instanceId.split(".");
+    const depthData = value.slice(1, 5);
+    let breathData = [value.slice(5, 7).reverse(), value.slice(7).reverse()];
+    breathData = breathData.map((breath) => {
+      return breath.reduce((acc, curr) => (acc = acc * 256 + curr));
+    });
+
+    kitList[targetKitAddr].depth = depthData;
+    kitList[targetKitAddr].breath = breathData;
+    io.emit("discovered", kitList);
   });
+
+  //adapter.on("deviceNotifiedOrIndicated", (...args) => {
+  //  console.log("return data :", args);
+  //});
 }
 
 /**
@@ -289,7 +342,7 @@ function openAdapter(adapter) {
     const baudRate = 1000000;
     console.log(`Opening adapter with ID: ${adapter.instanceId} and baud rate: ${baudRate}...`);
 
-    adapter.open({ baudRate, logLevel: "error" }, (err) => {
+    adapter.open({ baudRate, logLevel: "debug" }, (err) => {
       if (err) {
         reject(Error(`Error opening adapter: ${err}.`));
       }
@@ -344,13 +397,14 @@ io.on("connection", (socket) => {
     io.emit("state", "startconnect");
   });
   socket.on("connect-stop", () => {
+    portmanager.StopConnect();
     console.log("come");
   });
   socket.on("session-start", () => {
     portmanager.StartSession();
   });
   socket.on("session-stop", () => {
-    console.log("come");
+    portmanager.StopSession();
   });
 });
 

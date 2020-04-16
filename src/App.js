@@ -44,6 +44,8 @@ function App() {
                   <h3>{kitList[curr].name}</h3>
 
                   <p>connect : {kitList[curr].connect ? "connect" : "disconnect"}</p>
+                  <p>breath : {JSON.stringify(kitList[curr].breath)}</p>
+                  <p>depth : {JSON.stringify(kitList[curr].depth)}</p>
                 </div>
               </li>
             ))
