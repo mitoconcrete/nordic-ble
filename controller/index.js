@@ -245,6 +245,68 @@ class PortManager {
     //});
   }
 }
+
+class NordicLib {
+  constructor(adapter){
+    this.adapter = adapter;
+    this.kitList = {}
+  }
+
+  GetService(instanceID) {
+    const [kitAddr] = instanceID.split()
+    this.adapters[0].getServices(instanceID, (err, service) => {
+      if (!err) {
+        for (let i = 0; i < service.length; i++) {
+          switch (service[i].uuid) {
+            case FEEDBACK_SERVICE_UUID:
+              kitList[kitAddr].services.feedback = service[i];
+              const { instanceId: serviceId } = service[i];
+
+              this.GetChracteristic(kitAddr, serviceId);
+
+              break;
+            case DEVICE:
+              kitList[kitAddr].services.device = service[i];
+              break;
+            case BATTERY:
+              kitList[kitAddr].services.battery = service[i];
+              break;
+            case STORAGE:
+              kitList[kitAddr].services.storage = service[i];
+              break;
+            case ALERT:
+              kitList[kitAddr].services.alert = service[i];
+              break;
+          }
+        }
+      }
+    });
+  }
+  GetDescriptor(characteristicId){
+    this.adapter.getDescriptors(characteristicId, (err, descriptors) => {
+      descriptors.forEach((descriptor) => {
+        const [kitAddr] = descriptor.instanceId.split(".")
+        kitList[kitAddr].descriptorId.SensorDataStream = descriptor.instanceId;
+      });
+    });
+  }
+  GetChracteristic(serviceId) {
+    this.adapters[0].getCharacteristics(serviceId, (err, characteristics) => {
+      // process.stdout.write("\u001b[2J\u001b[0;0H");
+      characteristics.forEach((characteristic) => {
+        if (characteristic.uuid === SENSORDATA_STREAM_CHAR_UUID) {
+          const [kitAddr] = characteristic.instanceId.split(".")
+          this.GetDescriptor(characteristic.instanceId)
+          kitList[kitAddr].characteristicId.SensorDataStream = characteristic.instanceId;
+        }
+      });
+    });
+  }
+
+
+}
+
+
 const portmanager = new PortManager();
 function addAdapterListener(adapter) {
   /**
