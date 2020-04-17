@@ -57,6 +57,7 @@ class KitInfo {
 
 class PortManager {
   constructor() {
+    this.connectState = false;
     this.ports = [];
     this.adapters = [];
   }
@@ -195,7 +196,8 @@ class PortManager {
     });
   }
   StopConnect() {
-    this.adapters[0].connReset((...args) => {});
+    //this.adapters[0].connReset((...args) => {});
+    this.connectState = false;
   }
 
   StartConnect() {
@@ -203,7 +205,7 @@ class PortManager {
       active: true,
       interval: 100,
       window: 50,
-      timeout: 0,
+      timeout: 20,
     };
     const connParams = {
       min_conn_interval: 7.5,
@@ -220,7 +222,9 @@ class PortManager {
 
     if (disconnectList[0]) {
       this.adapters[0].connect(disconnectList[0], params, () => {
-        this.StartConnect();
+        if (this.connectState) {
+          this.StartConnect();
+        }
       });
     }
     //this.adapters.forEach((adapter) => {
@@ -393,12 +397,12 @@ io.on("connection", (socket) => {
     portmanager.StopScan();
   });
   socket.on("connect-start", () => {
+    portmanager.connectState = true;
     portmanager.StartConnect();
     io.emit("state", "startconnect");
   });
   socket.on("connect-stop", () => {
     portmanager.StopConnect();
-    console.log("come");
   });
   socket.on("session-start", () => {
     portmanager.StartSession();
